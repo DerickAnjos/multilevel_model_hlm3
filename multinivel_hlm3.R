@@ -483,7 +483,7 @@ random.effects(modelo_completo_hlm3)[["escola"]] %>%
         panel.grid = element_line("grey95"),
         legend.position = "none")
 
-# Plotando o comportamento de t00k (interceptos aleatórios no nível escola)
+# Plotando o comportamento de t10k (inclinações aleatórias no nível escola)
 # para fins didáticos
 
 random.effects(modelo_completo_hlm3)[["escola"]] %>% 
@@ -509,4 +509,81 @@ random.effects(modelo_completo_hlm3)[["escola"]] %>%
         panel.grid = element_line("grey95"),
         legend.position = "none")
 
+# Fitted values do modelo
+predict(modelo_completo_hlm3, level = 0:2) %>% 
+  mutate(estudante = gsub('^.*?\\/', '', estudante),
+         estudante = as.factor(as.numeric(estudante)),
+         escola = as.factor(as.numeric(escola)),
+         mes = tempo_estudante_escola$mes,
+         desempenho = tempo_estudante_escola$desempenho,
+         etjk = resid(modelo_completo_hlm3)) %>%
+  rename("fitted_fixed" = 3, 
+         "fitted_escola" = 4, 
+         "fitted_estudante" = 5) %>% 
+  select(escola, estudante, mes, desempenho, everything()) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = 'striped', 
+                full_width = T, font_size = 12)
+
+# Exemplos de predições com o modelo estimado ---------------------------------
+
+# Exemplo: Quais os valores previstos de desempenho escolar no primeiro mês 
+# (mes = 1) para o estudante "1" da escola "1", sabendo-se que esta escola 
+# oferece tempo médio de experiência de seus professores igual a 2 anos?
+glimpse(tempo_estudante_escola)
+
+predict(object = modelo_completo_hlm3, level = 0:2,
+        newdata = data.frame(mes = 1, estudante = "1", escola = "1",texp = 2,
+                             ativ = c("sim", "não")))
+
+# Fitted values (desempenho previsto) dos 47 alunos da primeira escola
+predict(modelo_completo_hlm3, level = 0:2) %>% 
+  mutate(estudante = gsub("^.*?\\/","",estudante),
+         estudante = as.factor(as.numeric(estudante)),
+         mes = tempo_estudante_escola$mes) %>% 
+  rename(fitted_fixed = 3,
+         fitted_escola = 4,
+         fitted_estudante = 5) %>% 
+  right_join(tempo_estudante_escola, 
+             by = c("escola","estudante","mes")) %>%
+  filter(estudante %in% 1:47) %>%
+  ggplot(aes(x = mes, y = fitted_estudante, color = estudante)) +
+  geom_smooth(method = "lm", formula = y ~ x, se = F, size = 1.3) +
+  geom_point(size = 4, alpha = 0.4) +
+  guides(color = F) +
+  scale_colour_viridis_d() +
+  labs(x = "Mês",
+       y = "Desempenho Escolar") +
+  theme_bw()
+
+
+# Bônus - comparando o modelo multinível com o modelo OLS utilizando dummies
+# nas variáveis que fazem parte do contexto multinível (superficialmente, uma
+# comparação do que seria considerar esses níveis em uma modelagem tradicional
+# do tipo GLM, por OLS)
+
+# Serão utilizadas para o modelo OLS as mesma variáveis utilizadas no multinível
+
+# Aplicando o procedimento n-1 dummies na base de dados
+base_dummizada <- dummy_cols(.data = tempo_estudante_escola, 
+                             select_columns = 'escola', 
+                             remove_most_frequent_dummy = T, 
+                             remove_selected_columns = T)
+
+# Estimado a OLS
+modelo_ols_dummies <- lm(formula = desempenho ~ . + mes:texp + mes:ativ -
+                           estudante, data = base_dummizada)
+
+#Parâmetros do modelo ols_final
+summary(modelo_ols_dummies)
+
+# Aplicando o procedimento Step wise para retirar as variáveis não 
+# estatisticamente significantes
+modelo_ols_dummies_step <- step(object = modelo_ols_dummies, )
+
+# Parâmetros do modelo OLS final - Step Wise
+summary(modelo_ols_dummies_step)
+
+# Comparando os LogLiks dos dois modelos
+lrtest(modelo_completo_hlm3, modelo_ols_dummies_step)
 
