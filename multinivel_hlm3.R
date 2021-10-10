@@ -230,5 +230,283 @@ tempo_estudante_escola %>%
   scale_color_viridis_d() +
   theme_bw()
 
+# Explorando visualmente a evolução temporal dos 50 primeiros estudantes da BD (
+# limitação do visual do gráfico)
+glimpse(tempo_estudante_escola)
 
+tempo_estudante_escola %>%
+  filter(estudante %in% 1:50) %>% 
+  ggplot(aes(x = factor(mes), y = desempenho, group = estudante)) +
+  geom_point(aes(color = estudante), size = 2) +
+  geom_line(aes(color = estudante), size = 1) +
+  guides(color = "none") +
+  labs(x = "Mês", y = "Desempenho Escolar") +
+  scale_color_viridis_d() +
+  theme_bw()
   
+
+# Gráfico da evolução temporal (medidas repetidas / longitudinal) do desempenho
+# médio dos alunos por escola
+
+ggplotly(
+  tempo_estudante_escola %>% 
+    ggplot(aes(x = mes, y = desempenho, color = escola)) +
+    geom_point(size = 2.5, alpha = .3) + 
+    geom_smooth(aes(group = escola), method = 'lm', se = F, formula = y ~ x) +
+    labs(x = "Mês", y = "Desempenho Escolar", color = "Escolas:") +
+    guides(color = 'none') +
+    scale_color_viridis_d() +
+    theme_bw()
+)
+
+
+# Estimação do modelo HLM3 nulo - 1º passo do step up -------------------------
+
+modelo_nulo_hlm3 <- lme(fixed = desempenho ~ 1, 
+                        random = list(escola = ~ 1, estudante = ~ 1), 
+                        data = tempo_estudante_escola, 
+                        method = 'REML')
+
+# Parâmetros do modelo
+summary(modelo_nulo_hlm3)
+
+# Cálculo dos erros padrão do modelo por meio da função stderr_nlme (Fonte no 
+# início do script) 
+stderr_nlme(modelo_nulo_hlm3)
+
+
+# Comparando o modelo multinível nulo com OLS nulo ----------------------------
+
+modelo_ols_nulo <- lm(formula = desempenho ~ 1, 
+                      data = tempo_estudante_escola)
+
+# Parâmetros do modelo
+summary(modelo_ols_nulo)
+
+# Comparando os LogLiks (função do pacote lmtest)
+lrtest(modelo_nulo_hlm3, modelo_ols_nulo)
+
+# Gráfico apresentando a evolução do step up
+data.frame(OLS_Nulo = logLik(modelo_ols_nulo),
+           HLM3_Nulo = logLik(modelo_nulo_hlm3)) %>%
+  rename(`OLS Nulo` = 1,
+         `HLM3 Nulo` = 2) %>%
+  melt() %>%
+  ggplot(aes(x = variable, y = (abs(-value)), fill = factor(variable))) +
+  geom_bar(stat = "identity") +
+  geom_label(aes(label = (round(value,3))), hjust = 1.1, color = "white", 
+             size = 7) +
+  labs(title = "Comparação do LL", 
+       y = "LogLik", 
+       x = "Modelo Proposto") +
+  coord_flip() +
+  scale_fill_manual("Legenda:",
+                    values = c("aquamarine4","darkorchid4")) +
+  theme(legend.title = element_blank(), 
+        panel.background = element_rect("white"),
+        legend.position = "none",
+        axis.line = element_line())
+
+
+# Estimação do modelo HLM3 com tendênca linear e Interceptos e Inclinações
+# aleatórias ------------------------------------------------------------------
+
+modelo_intercept_inclin_hlm3 <- lme(fixed = desempenho ~ mes, 
+                                    random = list(escola = ~ mes,
+                                                  estudante = ~ mes),
+                                    data = tempo_estudante_escola, 
+                                    method = "REML")
+
+# Parâmetros do modelo
+summary(modelo_intercept_inclin_hlm3)
+
+# Cálculo dos erros padrão do modelo por meio da função stderr_nlme (Fonte no 
+# início do script) 
+stderr_nlme(modelo_intercept_inclin_hlm3)
+
+# Comparando os LogLiks (função do pacote lmtest)
+lrtest(modelo_intercept_inclin_hlm3, modelo_nulo_hlm3)
+
+# Gráfico apresentando a evolução do step up
+data.frame(OLS_Nulo = logLik(modelo_ols_nulo),
+           HLM3_Nulo = logLik(modelo_nulo_hlm3),
+           HLM3_Intercept_Incli = logLik(modelo_intercept_inclin_hlm3)) %>%
+  rename(`OLS Nulo` = 1,
+         `HLM3 Nulo` = 2,
+         `HLM3 c/ Intercept. e Inclin. aleatórios` = 3) %>%
+  melt() %>%
+  ggplot(aes(x = variable, y = (abs(-value)), fill = factor(variable))) +
+  geom_bar(stat = "identity") +
+  geom_label(aes(label = (round(value,3))), hjust = 1.1, color = "white", 
+             size = 5) +
+  labs(title = "Comparação do LL", 
+       y = "LogLik", 
+       x = "Modelo Proposto") +
+  coord_flip() +
+  scale_fill_manual("Legenda:",
+                    values = c("aquamarine4","darkorchid4", 'darkred')) +
+  theme(legend.title = element_blank(), 
+        panel.background = element_rect("white"),
+        legend.position = "none",
+        axis.line = element_line())
+
+
+# Estimação do modelo HLM3 com tendência linear, interceptos e inclinações 
+# aleatórias e variáveis de nível 2 (ativ - dummie relativa a realização ou não
+# de atividades extras) e nível 3 (texp - tempo de experiência médio dos 
+# professores de determinada escola) ------------------------------------------
+
+modelo_completo_hlm3 <- lme(fixed = desempenho ~ mes + ativ + texp + 
+                              ativ:mes + texp:mes, 
+                            random = list(escola = ~ mes, 
+                                          estudante = ~ mes), 
+                            data = tempo_estudante_escola, 
+                            method = 'REML')
+
+# Parâmetros do modelo
+summary(modelo_completo_hlm3)
+
+# Cálculo dos erros padrão do modelo por meio da função stderr_nlme (Fonte no 
+# início do script) 
+stderr_nlme(modelo_completo_hlm3)
+
+# Comparando os LogLiks (função do pacote lmtest)
+lrtest(modelo_completo_hlm3,modelo_intercept_inclin_hlm3)
+
+# Gráfico apresentando a evolução do step up
+data.frame(OLS_Nulo = logLik(modelo_ols_nulo),
+           HLM3_Nulo = logLik(modelo_nulo_hlm3),
+           HLM3_Intercept_Incli = logLik(modelo_intercept_inclin_hlm3),
+           HLM3_completo = logLik(modelo_completo_hlm3)) %>%
+  rename(`OLS Nulo` = 1,
+         `HLM3 Nulo` = 2,
+         `HLM3 c/ Intercept. e Inclin. aleatórios` = 3,
+         `HLM3 completo` = 4) %>%
+  melt() %>%
+  ggplot(aes(x = variable, y = (abs(-value)), fill = factor(variable))) +
+  geom_bar(stat = "identity") +
+  geom_label(aes(label = (round(value,3))), hjust = 1.1, color = "white", 
+             size = 5) +
+  labs(title = "Comparação do LL", 
+       y = "LogLik", 
+       x = "Modelo Proposto") +
+  coord_flip() +
+  scale_fill_manual("Legenda:",
+                    values = c("aquamarine4","darkorchid4", 'darkred',
+                               'darkblue')) +
+  theme(legend.title = element_blank(), 
+        panel.background = element_rect("white"),
+        legend.position = "none",
+        axis.line = element_line())
+
+# Apresentando os valores dos efeitos aleatórios de intercepto e inclinação do
+# nível estudante e escola, respectivamente: v0jk, v1jk, t00k, t10k 
+
+# Nível Estudante
+random.effects(modelo_completo_hlm3)[['estudante']] %>% 
+  rename(v0jk = 1, v1jk = 2) %>% 
+  rownames_to_column("Estudante") %>% 
+  mutate(Estudante = gsub("^.*?\\/", "", Estudante)) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = 'striped', 
+                full_width = T, font_size = 12)
+
+# Nível Escola
+random.effects(modelo_completo_hlm3)[['escola']] %>% 
+  rename(t00k = 1, t10k = 2) %>% 
+  rownames_to_column("Escola") %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = 'striped', 
+                full_width = T, font_size = 12)
+
+# Plotando o comportamento de v0jk (interceptos aleatórios no nível estudante)
+# para fins didáticos (gráfico poluído devido a excesso de dados)
+
+ggplotly(
+  random.effects(modelo_completo_hlm3)[['estudante']] %>% 
+    rename(v0jk = 1, v1jk = 2) %>% 
+    rownames_to_column("Estudante") %>% 
+    mutate(Estudante = gsub("^.*?\\/", "", Estudante)) %>% 
+    ggplot(aes(x = fct_rev(Estudante), y = v0jk, label = Estudante)) +
+    geom_bar(stat = 'identity', color = 'aquamarine4') + 
+    coord_flip() +
+    labs(x = "Estudante", y = "v0jk") +
+    theme(legend.title = element_blank(),
+          panel.background = element_rect('white'),
+          legend.position = 'none', 
+          axis.text.y = element_blank(),
+          axis.ticks.y = element_blank())
+)
+
+# Plotando o comportamento de v1jk (inclinações aleatórias no nível estudante)
+# para fins didáticos (gráfico poluído devido a excesso de dados)
+
+ggplotly(
+  random.effects(modelo_completo_hlm3)[['estudante']] %>% 
+    rename(v0jk = 1, v1jk = 2) %>% 
+    rownames_to_column("Estudante") %>% 
+    mutate(Estudante = gsub("^.*?\\/", "", Estudante)) %>% 
+    ggplot(aes(x = fct_rev(Estudante), y = v1jk, label = Estudante)) +
+    geom_bar(stat = 'identity', color = 'darkorchid4') + 
+    coord_flip() +
+    labs(x = "Estudante", y = "v1jk") +
+    theme(legend.title = element_blank(),
+          panel.background = element_rect('white'),
+          legend.position = 'none', 
+          axis.text.y = element_blank(),
+          axis.ticks.y = element_blank())
+)
+
+# Plotando o comportamento de t00k (interceptos aleatórios no nível escola)
+# para fins didáticos
+
+random.effects(modelo_completo_hlm3)[["escola"]] %>% 
+  rename(t00k = 1,
+         t10k = 2) %>% 
+  rownames_to_column("Escola") %>% 
+  mutate(color_t00k = ifelse(t00k < 0, "A", "B"),
+         color_t10k = ifelse(t10k < 0, "A", "B"),
+         hjust_t00k = ifelse(t00k > 0, 1.15, -0.15),
+         hjust_t10k = ifelse(t10k > 0, 1.15, -0.15)) %>% 
+  arrange(Escola) %>%
+  ggplot(aes(label = round(t00k, digits = 3), 
+             hjust = hjust_t00k)) +
+  geom_bar(aes(x = fct_rev(Escola), y = t00k, fill = color_t00k),
+           stat = "identity", color = "black") +
+  geom_text(aes(x = Escola, y = 0), size = 4.1, color = "black") +
+  coord_flip() +
+  labs(x = "Escola",
+       y = expression(t[0][0][k])) +
+  scale_fill_manual(values = c("darkred","darkgreen")) +
+  theme(panel.background = element_rect("white"),
+        panel.border = element_rect(NA),
+        panel.grid = element_line("grey95"),
+        legend.position = "none")
+
+# Plotando o comportamento de t00k (interceptos aleatórios no nível escola)
+# para fins didáticos
+
+random.effects(modelo_completo_hlm3)[["escola"]] %>% 
+  rename(t00k = 1,
+         t10k = 2) %>% 
+  rownames_to_column("Escola") %>% 
+  mutate(color_t00k = ifelse(t00k < 0, "A", "B"),
+         color_t10k = ifelse(t10k < 0, "A", "B"),
+         hjust_t00k = ifelse(t00k > 0, 1.15, -0.15),
+         hjust_t10k = ifelse(t10k > 0, 1.15, -0.15)) %>% 
+  arrange(Escola) %>% 
+  ggplot(aes(label = round(t10k, digits = 3), 
+             hjust = hjust_t10k)) +
+  geom_bar(aes(x = fct_rev(Escola), y = t10k, fill = color_t10k),
+           stat = "identity", color = "black") +
+  geom_text(aes(x = Escola, y = 0), size = 4.1, color = "black") +
+  coord_flip() +
+  labs(x = "Escola",
+       y = expression(t[1][0][k])) +
+  scale_fill_manual(values = c("darkred","darkgreen")) +
+  theme(panel.background = element_rect("white"),
+        panel.border = element_rect(NA),
+        panel.grid = element_line("grey95"),
+        legend.position = "none")
+
+
